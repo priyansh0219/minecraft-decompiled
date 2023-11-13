@@ -1,0 +1,44 @@
+package net.minecraft.world.level.levelgen.feature;
+
+import com.mojang.serialization.Codec;
+import java.util.Random;
+import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.util.valueproviders.IntProvider;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.feature.configurations.GrowingPlantConfiguration;
+
+public class GrowingPlantFeature extends Feature<GrowingPlantConfiguration> {
+   public GrowingPlantFeature(Codec<GrowingPlantConfiguration> var1) {
+      super(var1);
+   }
+
+   public boolean place(FeaturePlaceContext<GrowingPlantConfiguration> var1) {
+      WorldGenLevel var2 = var1.level();
+      GrowingPlantConfiguration var3 = (GrowingPlantConfiguration)var1.config();
+      Random var4 = var1.random();
+      int var5 = ((IntProvider)var3.heightDistribution.getRandomValue(var4).orElseThrow(IllegalStateException::new)).sample(var4);
+      BlockPos.MutableBlockPos var6 = var1.origin().mutable();
+      BlockPos.MutableBlockPos var7 = var6.mutable().move(var3.direction);
+      BlockState var8 = var2.getBlockState(var6);
+
+      for(int var9 = 1; var9 <= var5; ++var9) {
+         BlockState var10 = var8;
+         var8 = var2.getBlockState(var7);
+         if (var10.isAir() || var3.allowWater && var10.getFluidState().is(FluidTags.WATER)) {
+            if (var9 == var5 || !var8.isAir()) {
+               var2.setBlock(var6, var3.headProvider.getState(var4, var6), 2);
+               break;
+            }
+
+            var2.setBlock(var6, var3.bodyProvider.getState(var4, var6), 2);
+         }
+
+         var7.move(var3.direction);
+         var6.move(var3.direction);
+      }
+
+      return true;
+   }
+}

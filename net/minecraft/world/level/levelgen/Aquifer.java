@@ -1,0 +1,283 @@
+package net.minecraft.world.level.levelgen;
+
+import java.util.Arrays;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
+
+public interface Aquifer {
+   int ALWAYS_LAVA_AT_OR_BELOW_Y_INDEX = 9;
+   int ALWAYS_USE_SEA_LEVEL_WHEN_ABOVE = 30;
+
+   static Aquifer create(ChunkPos var0, NormalNoise var1, NormalNoise var2, NormalNoise var3, NoiseGeneratorSettings var4, NoiseSampler var5, int var6, int var7) {
+      return new Aquifer.NoiseBasedAquifer(var0, var1, var2, var3, var4, var5, var6, var7);
+   }
+
+   static Aquifer createDisabled(final int var0, final BlockState var1) {
+      return new Aquifer() {
+         public BlockState computeState(BaseStoneSource var1x, int var2, int var3, int var4, double var5) {
+            if (var5 > 0.0D) {
+               return var1x.getBaseBlock(var2, var3, var4);
+            } else {
+               return var3 >= var0 ? Blocks.AIR.defaultBlockState() : var1;
+            }
+         }
+
+         public boolean shouldScheduleFluidUpdate() {
+            return false;
+         }
+      };
+   }
+
+   BlockState computeState(BaseStoneSource var1, int var2, int var3, int var4, double var5);
+
+   boolean shouldScheduleFluidUpdate();
+
+   public static class NoiseBasedAquifer implements Aquifer {
+      private static final int X_RANGE = 10;
+      private static final int Y_RANGE = 9;
+      private static final int Z_RANGE = 10;
+      private static final int X_SEPARATION = 6;
+      private static final int Y_SEPARATION = 3;
+      private static final int Z_SEPARATION = 6;
+      private static final int X_SPACING = 16;
+      private static final int Y_SPACING = 12;
+      private static final int Z_SPACING = 16;
+      private final NormalNoise barrierNoise;
+      private final NormalNoise waterLevelNoise;
+      private final NormalNoise lavaNoise;
+      private final NoiseGeneratorSettings noiseGeneratorSettings;
+      private final Aquifer.NoiseBasedAquifer.AquiferStatus[] aquiferCache;
+      private final long[] aquiferLocationCache;
+      private boolean shouldScheduleFluidUpdate;
+      private final NoiseSampler sampler;
+      private final int minGridX;
+      private final int minGridY;
+      private final int minGridZ;
+      private final int gridSizeX;
+      private final int gridSizeZ;
+
+      NoiseBasedAquifer(ChunkPos var1, NormalNoise var2, NormalNoise var3, NormalNoise var4, NoiseGeneratorSettings var5, NoiseSampler var6, int var7, int var8) {
+         this.barrierNoise = var2;
+         this.waterLevelNoise = var3;
+         this.lavaNoise = var4;
+         this.noiseGeneratorSettings = var5;
+         this.sampler = var6;
+         this.minGridX = this.gridX(var1.getMinBlockX()) - 1;
+         int var9 = this.gridX(var1.getMaxBlockX()) + 1;
+         this.gridSizeX = var9 - this.minGridX + 1;
+         this.minGridY = this.gridY(var7) - 1;
+         int var10 = this.gridY(var7 + var8) + 1;
+         int var11 = var10 - this.minGridY + 1;
+         this.minGridZ = this.gridZ(var1.getMinBlockZ()) - 1;
+         int var12 = this.gridZ(var1.getMaxBlockZ()) + 1;
+         this.gridSizeZ = var12 - this.minGridZ + 1;
+         int var13 = this.gridSizeX * var11 * this.gridSizeZ;
+         this.aquiferCache = new Aquifer.NoiseBasedAquifer.AquiferStatus[var13];
+         this.aquiferLocationCache = new long[var13];
+         Arrays.fill(this.aquiferLocationCache, Long.MAX_VALUE);
+      }
+
+      private int getIndex(int var1, int var2, int var3) {
+         int var4 = var1 - this.minGridX;
+         int var5 = var2 - this.minGridY;
+         int var6 = var3 - this.minGridZ;
+         return (var5 * this.gridSizeZ + var6) * this.gridSizeX + var4;
+      }
+
+      public BlockState computeState(BaseStoneSource var1, int var2, int var3, int var4, double var5) {
+         if (var5 <= 0.0D) {
+            double var7;
+            BlockState var9;
+            boolean var10;
+            if (this.isLavaLevel(var3)) {
+               var9 = Blocks.LAVA.defaultBlockState();
+               var7 = 0.0D;
+               var10 = false;
+            } else {
+               int var11 = Math.floorDiv(var2 - 5, 16);
+               int var12 = Math.floorDiv(var3 + 1, 12);
+               int var13 = Math.floorDiv(var4 - 5, 16);
+               int var14 = Integer.MAX_VALUE;
+               int var15 = Integer.MAX_VALUE;
+               int var16 = Integer.MAX_VALUE;
+               long var17 = 0L;
+               long var19 = 0L;
+               long var21 = 0L;
+               int var23 = 0;
+
+               while(true) {
+                  if (var23 > 1) {
+                     Aquifer.NoiseBasedAquifer.AquiferStatus var48 = this.getAquiferStatus(var17);
+                     Aquifer.NoiseBasedAquifer.AquiferStatus var49 = this.getAquiferStatus(var19);
+                     Aquifer.NoiseBasedAquifer.AquiferStatus var50 = this.getAquiferStatus(var21);
+                     double var51 = this.similarity(var14, var15);
+                     double var52 = this.similarity(var14, var16);
+                     double var53 = this.similarity(var15, var16);
+                     var10 = var51 > 0.0D;
+                     if (var48.fluidLevel >= var3 && var48.fluidType.is(Blocks.WATER) && this.isLavaLevel(var3 - 1)) {
+                        var7 = 1.0D;
+                     } else if (var51 > -1.0D) {
+                        double var54 = 1.0D + (this.barrierNoise.getValue((double)var2, (double)var3, (double)var4) + 0.05D) / 4.0D;
+                        double var56 = this.calculatePressure(var3, var54, var48, var49);
+                        double var57 = this.calculatePressure(var3, var54, var48, var50);
+                        double var38 = this.calculatePressure(var3, var54, var49, var50);
+                        double var40 = Math.max(0.0D, var51);
+                        double var42 = Math.max(0.0D, var52);
+                        double var44 = Math.max(0.0D, var53);
+                        double var46 = 2.0D * var40 * Math.max(var56, Math.max(var57 * var42, var38 * var44));
+                        var7 = Math.max(0.0D, var46);
+                     } else {
+                        var7 = 0.0D;
+                     }
+
+                     var9 = var3 >= var48.fluidLevel ? Blocks.AIR.defaultBlockState() : var48.fluidType;
+                     break;
+                  }
+
+                  for(int var24 = -1; var24 <= 1; ++var24) {
+                     for(int var25 = 0; var25 <= 1; ++var25) {
+                        int var26 = var11 + var23;
+                        int var27 = var12 + var24;
+                        int var28 = var13 + var25;
+                        int var29 = this.getIndex(var26, var27, var28);
+                        long var32 = this.aquiferLocationCache[var29];
+                        long var30;
+                        if (var32 != Long.MAX_VALUE) {
+                           var30 = var32;
+                        } else {
+                           WorldgenRandom var34 = new WorldgenRandom(Mth.getSeed(var26, var27 * 3, var28) + 1L);
+                           var30 = BlockPos.asLong(var26 * 16 + var34.nextInt(10), var27 * 12 + var34.nextInt(9), var28 * 16 + var34.nextInt(10));
+                           this.aquiferLocationCache[var29] = var30;
+                        }
+
+                        int var55 = BlockPos.getX(var30) - var2;
+                        int var35 = BlockPos.getY(var30) - var3;
+                        int var36 = BlockPos.getZ(var30) - var4;
+                        int var37 = var55 * var55 + var35 * var35 + var36 * var36;
+                        if (var14 >= var37) {
+                           var21 = var19;
+                           var19 = var17;
+                           var17 = var30;
+                           var16 = var15;
+                           var15 = var14;
+                           var14 = var37;
+                        } else if (var15 >= var37) {
+                           var21 = var19;
+                           var19 = var30;
+                           var16 = var15;
+                           var15 = var37;
+                        } else if (var16 >= var37) {
+                           var21 = var30;
+                           var16 = var37;
+                        }
+                     }
+                  }
+
+                  ++var23;
+               }
+            }
+
+            if (var5 + var7 <= 0.0D) {
+               this.shouldScheduleFluidUpdate = var10;
+               return var9;
+            }
+         }
+
+         this.shouldScheduleFluidUpdate = false;
+         return var1.getBaseBlock(var2, var3, var4);
+      }
+
+      public boolean shouldScheduleFluidUpdate() {
+         return this.shouldScheduleFluidUpdate;
+      }
+
+      private boolean isLavaLevel(int var1) {
+         return var1 - this.noiseGeneratorSettings.noiseSettings().minY() <= 9;
+      }
+
+      private double similarity(int var1, int var2) {
+         double var3 = 25.0D;
+         return 1.0D - (double)Math.abs(var2 - var1) / 25.0D;
+      }
+
+      private double calculatePressure(int var1, double var2, Aquifer.NoiseBasedAquifer.AquiferStatus var4, Aquifer.NoiseBasedAquifer.AquiferStatus var5) {
+         if (var1 <= var4.fluidLevel && var1 <= var5.fluidLevel && var4.fluidType != var5.fluidType) {
+            return 1.0D;
+         } else {
+            int var6 = Math.abs(var4.fluidLevel - var5.fluidLevel);
+            double var7 = 0.5D * (double)(var4.fluidLevel + var5.fluidLevel);
+            double var9 = Math.abs(var7 - (double)var1 - 0.5D);
+            return 0.5D * (double)var6 * var2 - var9;
+         }
+      }
+
+      private int gridX(int var1) {
+         return Math.floorDiv(var1, 16);
+      }
+
+      private int gridY(int var1) {
+         return Math.floorDiv(var1, 12);
+      }
+
+      private int gridZ(int var1) {
+         return Math.floorDiv(var1, 16);
+      }
+
+      private Aquifer.NoiseBasedAquifer.AquiferStatus getAquiferStatus(long var1) {
+         int var3 = BlockPos.getX(var1);
+         int var4 = BlockPos.getY(var1);
+         int var5 = BlockPos.getZ(var1);
+         int var6 = this.gridX(var3);
+         int var7 = this.gridY(var4);
+         int var8 = this.gridZ(var5);
+         int var9 = this.getIndex(var6, var7, var8);
+         Aquifer.NoiseBasedAquifer.AquiferStatus var10 = this.aquiferCache[var9];
+         if (var10 != null) {
+            return var10;
+         } else {
+            Aquifer.NoiseBasedAquifer.AquiferStatus var11 = this.computeAquifer(var3, var4, var5);
+            this.aquiferCache[var9] = var11;
+            return var11;
+         }
+      }
+
+      private Aquifer.NoiseBasedAquifer.AquiferStatus computeAquifer(int var1, int var2, int var3) {
+         int var4 = this.noiseGeneratorSettings.seaLevel();
+         if (var2 > 30) {
+            return new Aquifer.NoiseBasedAquifer.AquiferStatus(var4, Blocks.WATER.defaultBlockState());
+         } else {
+            boolean var5 = true;
+            boolean var6 = true;
+            boolean var7 = true;
+            double var8 = this.waterLevelNoise.getValue((double)Math.floorDiv(var1, 64), (double)Math.floorDiv(var2, 40) / 1.4D, (double)Math.floorDiv(var3, 64)) * 30.0D + -10.0D;
+            boolean var10 = false;
+            if (Math.abs(var8) > 8.0D) {
+               var8 *= 4.0D;
+            }
+
+            int var11 = Math.floorDiv(var2, 40) * 40 + 20;
+            int var12 = var11 + Mth.floor(var8);
+            if (var11 == -20) {
+               double var13 = this.lavaNoise.getValue((double)Math.floorDiv(var1, 64), (double)Math.floorDiv(var2, 40) / 1.4D, (double)Math.floorDiv(var3, 64));
+               var10 = Math.abs(var13) > 0.2199999988079071D;
+            }
+
+            return new Aquifer.NoiseBasedAquifer.AquiferStatus(Math.min(56, var12), var10 ? Blocks.LAVA.defaultBlockState() : Blocks.WATER.defaultBlockState());
+         }
+      }
+
+      private static final class AquiferStatus {
+         final int fluidLevel;
+         final BlockState fluidType;
+
+         public AquiferStatus(int var1, BlockState var2) {
+            this.fluidLevel = var1;
+            this.fluidType = var2;
+         }
+      }
+   }
+}

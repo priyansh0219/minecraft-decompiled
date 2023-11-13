@@ -1,0 +1,40 @@
+package com.mojang.blaze3d.platform;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
+
+public class MemoryTracker {
+   public static synchronized ByteBuffer createByteBuffer(int var0) {
+      return ByteBuffer.allocateDirect(var0).order(ByteOrder.nativeOrder());
+   }
+
+   public static ShortBuffer createShortBuffer(int var0) {
+      return createByteBuffer(var0 << 1).asShortBuffer();
+   }
+
+   public static CharBuffer createCharBuffer(int var0) {
+      return createByteBuffer(var0 << 1).asCharBuffer();
+   }
+
+   public static IntBuffer createIntBuffer(int var0) {
+      return createByteBuffer(var0 << 2).asIntBuffer();
+   }
+
+   public static LongBuffer createLongBuffer(int var0) {
+      return createByteBuffer(var0 << 3).asLongBuffer();
+   }
+
+   public static FloatBuffer createFloatBuffer(int var0) {
+      return createByteBuffer(var0 << 2).asFloatBuffer();
+   }
+
+   public static DoubleBuffer createDoubleBuffer(int var0) {
+      return createByteBuffer(var0 << 3).asDoubleBuffer();
+   }
+}
